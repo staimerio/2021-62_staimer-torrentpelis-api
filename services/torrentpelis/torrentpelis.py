@@ -1,0 +1,254 @@
+"""Services for novels controller"""
+
+# Retic
+from retic import env, App as app
+
+# Requests
+import requests
+
+# Time
+from time import sleep
+
+# Services
+from retic.services.responses import success_response, error_response
+# services
+from services.wordpress import wordpress
+# from services.hentai import sites, chapters
+# from services.sendfiles import sendfiles
+# from services.images import images
+# from services.epub import epub
+# from services.pdf import pdf
+# from services.mobi import mobi
+# from services.general.general import get_mb_from_bytes_round
+# from retic.services.general.json import parse, jsonify
+
+# Models
+# from models import Hentai, HentaiPost, Chapter, Image
+
+# Constants
+WEBSITE_LIMIT_LATEST = app.config.get('WEBSITE_LIMIT_LATEST')
+WEBSITE_POST_TYPE = app.config.get('WEBSITE_POST_TYPE')
+
+URL_CINECALIDAD_LATEST = app.apps['backend']['cinecalidad']['base_url'] + \
+    app.apps['backend']['cinecalidad']['latest']
+URL_CINECALIDAD_POST = app.apps['backend']['cinecalidad']['base_url'] + \
+    app.apps['backend']['cinecalidad']['posts']
+
+URL_TMDB_SEARCH = app.apps['backend']['tmdb']['base_url'] + \
+    app.apps['backend']['tmdb']['search']
+
+
+
+def get_items_from_website(limit, pages):
+    """Prepare the payload"""
+    _payload = {
+        u"limit": limit,
+        u"pages": pages
+    }
+    """Get all novels from website"""
+    _result = requests.get(URL_CINECALIDAD_LATEST, params=_payload)
+    """Check if the response is valid"""
+    if _result.status_code != 200:
+        """Return error if the response is invalid"""
+        raise Exception(_result.text)
+    """Get json response"""
+    _result_json = _result.json()
+    """Return novels"""
+    return _result_json
+
+def get_mirrors_from_website(url_base, url, id):
+    """Prepare the payload"""
+    _payload = {
+        u"url": url,
+        u"id": id,
+    }
+    """Get all chapters from website"""
+    _info = requests.get(url_base, params=_payload)
+    """Check if the response is valid"""
+    if _info.status_code != 200:
+        """Return error if the response is invalid"""
+        return None
+    """Get json response"""
+    _info_json = _info.json()
+    """Return chapters"""
+    return _info_json.get('data')
+
+def get_info_from_tmdb(term):
+    """Prepare the payload"""
+    _payload = {
+        u"term": term,
+    }
+    """Get all chapters from website"""
+    _info = requests.get(URL_TMDB_SEARCH, params=_payload)
+    """Check if the response is valid"""
+    if _info.status_code != 200:
+        """Return error if the response is invalid"""
+        return None
+    """Get json response"""
+    _info_json = _info.json()
+    """Return chapters"""
+    return _info_json.get('data')
+
+def build_items_to_upload(
+    items,
+    headers,
+    limit_publish
+):
+    """Define all variables"""
+    _items = []
+    """For each novel do the following"""
+    for _item in items:
+        """Find novel in db"""
+        _oldpost = wordpress.search_post_by_slug(
+            _item['slug'], headers=headers, post_type=WEBSITE_POST_TYPE
+        )
+        if _oldpost:
+            continue
+        """Define the url"""
+        _url_base = URL_CINECALIDAD_POST
+        """Get all chapters of the novels without ids that exists"""
+        _publication = get_mirrors_from_website(
+            url_base=_url_base,
+            url=_item['url'],
+            id=_item['id']
+        )
+        """Check if it has any problem"""
+        if not _publication:
+            continue
+
+        """Get information from tmdb"""
+        _info = get_info_from_tmdb(
+            term=_publication['title'],
+        )
+
+        if not _info:
+            continue
+        """Set data"""     
+        _data={
+            **_item,
+            **_publication,
+            **_info,
+        }
+        """Add novel to list"""
+        _items.append(_data)     
+        """Check the limit"""
+        if len(_items) >= limit_publish:
+            break   
+    return _items
+
+
+
+def publish_item_wp(
+        items, headers, 
+        wp_login, wp_admin, wp_username, wp_password, wp_url
+    ):
+    """Publish all items but it check if the post exists,
+    in this case, it will update the post.
+
+    :param items: List of novel to will publish
+    """
+    _session = wordpress.login(
+        wp_login, wp_admin, wp_username, wp_password)
+
+    _url_admin = '{0}/wp-admin/admin-ajax.php'.format(
+        wp_url)    
+    """Define all variables"""
+    _published_items = []
+    """For each novels do to the following"""
+    for _item in items:        
+        """Create the post"""
+        _post = wordpress.create_post(
+            post_type=WEBSITE_POST_TYPE,
+            title=_item['title'],
+            slug=_item['slug'],
+            headers=headers,
+        )
+        """Check if is a valid post"""
+        if not _post or not _post['valid'] or not 'id' in _post['data']:
+            """Add post to novel"""
+            continue
+            
+        """Add payload"""
+        _params_item = {
+            'idpost': _post['data']['id'],
+            'tmdbid': _item['imdb_id'],
+            'typept': 'movies',
+            'action': 'dbmovies_genereditor'
+        }
+        _req = wordpress.request_to_ajax(_url_admin, _params_item, _session)
+        """Get json"""
+        _item_imported = _req.json()
+
+        """If it was published, then add"""
+        if not _item_imported['response']:
+            _post_updated = wordpress.update_post(
+                _post['data']['id'],
+                {
+                    u'status': 'trash'
+                },
+                headers=headers,
+                post_type=WEBSITE_POST_TYPE,
+            )
+            continue
+        else:
+            _post_updated = wordpress.update_post(
+                _post['data']['id'],
+                {
+                    u'status': 'publish'
+                },
+                headers=headers,
+                post_type=WEBSITE_POST_TYPE,
+            )
+
+        """Upload links"""
+        for _mirror in _item['mirrors']:
+            """Add payload"""
+            _params_item = {
+                'urls': _mirror['url'],
+                'type': 'Torrent',
+                'quality': _mirror['quality'],
+                'language': _mirror['lang'],
+                'size': _mirror['size'],
+                'postid': _post['data']['id'],
+                'action': 'doosave_links'
+            }
+            _req_mirrors = wordpress.request_to_ajax(_url_admin, _params_item, _session)
+        _item_published={
+            'post_id':_post['data']['id'],
+            'slug':_item['slug'],
+            'title':_item['title'],
+            'mirror':_item['mirrors']
+        }
+        _published_items.append(_item_published)
+    """Return the posts list"""
+    return success_response(
+        data=_published_items
+    )
+
+def publish_items(
+    items,
+    headers,
+    wp_login, wp_admin, wp_username, wp_password, wp_url,
+    limit_publish,
+):   
+    _builded_items = build_items_to_upload(
+        items,
+        headers,
+        limit_publish
+    )
+
+    if not _builded_items:
+        return error_response(
+            "Post not created"
+        )
+    """Publish or update on website"""
+    _created_posts = publish_item_wp(
+        _builded_items,
+        headers=headers,
+        wp_login=wp_login, 
+        wp_admin=wp_admin, 
+        wp_username=wp_username, 
+        wp_password=wp_password,
+        wp_url=wp_url,
+    )
+    return _created_posts

@@ -1,0 +1,8 @@
+README.md
+setup.cfg
+setup.py
+httpmethods/__init__.py
+httpmethods.egg-info/PKG-INFO
+httpmethods.egg-info/SOURCES.txt
+httpmethods.egg-info/dependency_links.txt
+httpmethods.egg-info/top_level.txt
