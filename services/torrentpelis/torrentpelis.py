@@ -13,17 +13,10 @@ from time import sleep
 from retic.services.responses import success_response, error_response
 # services
 from services.wordpress import wordpress
-# from services.hentai import sites, chapters
-# from services.sendfiles import sendfiles
-# from services.images import images
-# from services.epub import epub
-# from services.pdf import pdf
-# from services.mobi import mobi
-# from services.general.general import get_mb_from_bytes_round
-# from retic.services.general.json import parse, jsonify
 
 # Models
-# from models import Hentai, HentaiPost, Chapter, Image
+from models import Scrapper
+import services.general.constants as constants
 
 # Constants
 WEBSITE_LIMIT_LATEST = app.config.get('WEBSITE_LIMIT_LATEST')
@@ -39,11 +32,11 @@ URL_TMDB_SEARCH = app.apps['backend']['tmdb']['base_url'] + \
 
 
 
-def get_items_from_website(limit, pages):
+def get_items_from_website(limit, page):
     """Prepare the payload"""
     _payload = {
         u"limit": limit,
-        u"pages": pages
+        u"page": page
     }
     """Get all novels from website"""
     _result = requests.get(URL_CINECALIDAD_LATEST, params=_payload)
@@ -92,7 +85,7 @@ def get_info_from_tmdb(term):
 def build_items_to_upload(
     items,
     headers,
-    limit_publish
+    limit_publish,
 ):
     """Define all variables"""
     _items = []
@@ -221,18 +214,27 @@ def publish_item_wp(
         }
         _published_items.append(_item_published)
     """Return the posts list"""
-    return success_response(
-        data=_published_items
-    )
+    return _published_items
 
-def publish_items(
-    items,
+
+def upload_items(
+    limit,
     headers,
     wp_login, wp_admin, wp_username, wp_password, wp_url,
     limit_publish,
-):   
+    page,
+):
+    _items = get_items_from_website(
+        limit=limit,
+        page=page,
+    )
+    
+    if _items['valid'] is False:
+        return error_response(
+            "Post not created"
+        )
     _builded_items = build_items_to_upload(
-        items,
+        _items['data']['items'],
         headers,
         limit_publish
     )
@@ -252,3 +254,60 @@ def publish_items(
         wp_url=wp_url,
     )
     return _created_posts
+
+def publish_items(
+    limit,
+    headers,
+    wp_login, wp_admin, wp_username, wp_password, wp_url,
+    limit_publish,
+    page=1,
+):   
+    _created_posts=upload_items(
+        limit,
+        headers,
+        wp_login, wp_admin, wp_username, wp_password, wp_url,
+        limit_publish,
+        page=page,
+    )
+    print("*********len(_items)*********")
+    """Check if almost one item was published"""
+    if(len(_created_posts) == 0):
+        """Find in database"""
+        _session = app.apps.get("db_sqlalchemy")()
+        _item = _session.query(Scrapper).\
+            filter(Scrapper.key == wp_url, Scrapper.type == constants.TYPES['movies']).\
+            first()
+
+        print("*********if _item is None*********")
+        if _item is None:
+            print("*********_item = Scrapper*********")
+            _item = Scrapper(
+                key=wp_url,
+                type=constants.TYPES['movies'],
+                value=page+1
+            )
+            """Save chapters in database"""
+            _session.add(_item)
+            _session.flush()
+            """Save in database"""
+        else:
+            print("*********_item.value = *********")
+            _item.value = str(int(_item.value)+1)
+        _session.commit()
+
+        _created_posts=upload_items(
+            limit,
+            headers,
+            wp_login, wp_admin, wp_username, wp_password, wp_url,
+            limit_publish,
+            page=_item.value,
+        )
+
+        _session.close()
+
+    _data_respose={
+        u"items":  _created_posts
+    }
+    return success_response(
+        data=_data_respose
+    )

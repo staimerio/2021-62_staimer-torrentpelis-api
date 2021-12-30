@@ -13,13 +13,13 @@ from apps.urls import APP_BACKEND
 from routes.routes import router
 
 # SQLAlchemy
-# from services.sqlalchemy.sqlalchemy import config_sqlalchemy
+from services.sqlalchemy.sqlalchemy import config_sqlalchemy
 
 # Add routes to app
 app.use(router)
 
 # Add database to app
-# app.use(config_sqlalchemy(), "db_sqlalchemy")
+app.use(config_sqlalchemy(), "db_sqlalchemy")
 
 
 def application(req, res):

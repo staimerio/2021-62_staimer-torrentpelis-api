@@ -49,16 +49,10 @@ def publish_latest_movies(req: Request, res: Response, next: Next):
 
     limit_publish=req.param(
         'limit_publish', app.config.get('WEBSITE_LIMIT_PUBLISH'),  callback=int)
-    _items = torrentpelis.get_items_from_website(
-        limit=req.param('limit', WEBSITE_LIMIT_LATEST,  callback=int),
-        pages=req.param('pages', WEBSITE_PAGES_LATEST, callback=int),
-    )
     
-    if _items['valid'] is False:
-        return res.bad_request(_items)
     """Publish items"""
     result = torrentpelis.publish_items(
-        _items.get('data')['items'],
+        req.param('limit', WEBSITE_LIMIT_LATEST,  callback=int),
         headers=_headers,
         wp_login=wp_login, 
         wp_admin=wp_admin, 
@@ -66,6 +60,7 @@ def publish_latest_movies(req: Request, res: Response, next: Next):
         wp_password=wp_password, 
         wp_url=wp_url,
         limit_publish=limit_publish,
+        page=req.param('page', WEBSITE_PAGES_LATEST, callback=int)
     )
     """Check if exist an error"""
     if result['valid'] is False:
