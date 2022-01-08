@@ -230,9 +230,8 @@ def upload_items(
     )
     
     if _items['valid'] is False:
-        return error_response(
-            "Post not created"
-        )
+        return []
+
     _builded_items = build_items_to_upload(
         _items['data']['items'],
         headers,
@@ -240,9 +239,8 @@ def upload_items(
     )
 
     if not _builded_items:
-        return error_response(
-            "Post not created"
-        )
+        return []
+        
     """Publish or update on website"""
     _created_posts = publish_item_wp(
         _builded_items,
