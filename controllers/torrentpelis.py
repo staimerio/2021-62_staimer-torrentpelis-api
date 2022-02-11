@@ -34,11 +34,11 @@ def publish_latest_movies(req: Request, res: Response, next: Next):
 
     # """Validate obligate params"""
     _headers = {
-        u'oauth_consumer_key': app.config.get('WP_OAUTH_CONSUMER_KEY'),
-        u'oauth_consumer_secret': app.config.get('WP_OAUTH_CONSUMER_SECRET'),
-        u'oauth_token': app.config.get('WP_OAUTH_TOKEN'),
-        u'oauth_token_secret': app.config.get('WP_OAUTH_TOKEN_SECRET'),
-        u'base_url': app.config.get('WP_BASE_URL'),
+        u'oauth_consumer_key': req.headers.get('oauth_consumer_key') or app.config.get('WP_OAUTH_CONSUMER_KEY'),
+        u'oauth_consumer_secret': req.headers.get('oauth_consumer_secret') or app.config.get('WP_OAUTH_CONSUMER_SECRET'),
+        u'oauth_token': req.headers.get('oauth_token') or app.config.get('WP_OAUTH_TOKEN'),
+        u'oauth_token_secret': req.headers.get('oauth_token_secret') or app.config.get('WP_OAUTH_TOKEN_SECRET'),
+        u'base_url': req.headers.get('base_url') or app.config.get('WP_BASE_URL'),
     }
 
     wp_login=req.param('wp_login')
