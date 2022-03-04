@@ -17,6 +17,7 @@ from services.wordpress import wordpress
 # Models
 from models import Scrapper
 import services.general.constants as constants
+import services.movies.movies as movies
 
 # Constants
 WEBSITE_LIMIT_LATEST = app.config.get('WEBSITE_LIMIT_LATEST')
@@ -31,8 +32,37 @@ URL_TMDB_SEARCH = app.apps['backend']['tmdb']['base_url'] + \
     app.apps['backend']['tmdb']['search']
 
 
+def get_items_from_origin(limit, page, origin=None):
+    if origin == constants.ORIGIN['cinecalidad']:
+        return get_items_from_website(limit, page, origin)
+    elif origin == constants.ORIGIN['torrentpelis']:
+        _items = movies.get_latest(
+            limit=limit,
+            page=page,
+        )
+        return success_response(data={u'items': _items['data']})
+    else:
+        return get_items_from_website(limit, page, origin)
 
-def get_items_from_website(limit, page):
+
+def get_publication_from_origin(url, id, origin):
+    if origin == constants.ORIGIN['cinecalidad']:
+        """Get all chapters of the novels without ids that exists"""
+        return get_mirrors_from_website(
+            url_base=URL_CINECALIDAD_POST,
+            url=url,
+            id=id
+        )
+    elif origin == constants.ORIGIN['torrentpelis']:
+        _publication = movies.get_info_post(
+            id=id
+        )
+        return _publication['data']
+    else:
+        return None
+
+
+def get_items_from_website(limit, page, origin):
     """Prepare the payload"""
     _payload = {
         u"limit": limit,
@@ -48,6 +78,7 @@ def get_items_from_website(limit, page):
     _result_json = _result.json()
     """Return novels"""
     return _result_json
+
 
 def get_mirrors_from_website(url_base, url, id):
     """Prepare the payload"""
@@ -66,6 +97,7 @@ def get_mirrors_from_website(url_base, url, id):
     """Return chapters"""
     return _info_json.get('data')
 
+
 def get_info_from_tmdb(term):
     """Prepare the payload"""
     _payload = {
@@ -82,10 +114,12 @@ def get_info_from_tmdb(term):
     """Return chapters"""
     return _info_json.get('data')
 
+
 def build_items_to_upload(
     items,
     headers,
     limit_publish,
+    origin,
 ):
     """Define all variables"""
     _items = []
@@ -97,16 +131,10 @@ def build_items_to_upload(
         )
         if _oldpost:
             continue
-        """Define the url"""
-        _url_base = URL_CINECALIDAD_POST
-        """Get all chapters of the novels without ids that exists"""
-        _publication = get_mirrors_from_website(
-            url_base=_url_base,
-            url=_item['url'],
-            id=_item['id']
-        )
+        _publication = get_publication_from_origin(
+            _item['url'], _item['id'], origin)
         """Check if it has any problem"""
-        if not _publication:
+        if not _publication or not _publication['mirrors']:
             continue
 
         """Get information from tmdb"""
@@ -116,25 +144,24 @@ def build_items_to_upload(
 
         if not _info:
             continue
-        """Set data"""     
-        _data={
+        """Set data"""
+        _data = {
             **_item,
             **_publication,
             **_info,
         }
         """Add novel to list"""
-        _items.append(_data)     
+        _items.append(_data)
         """Check the limit"""
         if len(_items) >= limit_publish:
-            break   
+            break
     return _items
 
 
-
 def publish_item_wp(
-        items, headers, 
-        wp_login, wp_admin, wp_username, wp_password, wp_url
-    ):
+    items, headers,
+    wp_login, wp_admin, wp_username, wp_password, wp_url
+):
     """Publish all items but it check if the post exists,
     in this case, it will update the post.
 
@@ -144,11 +171,11 @@ def publish_item_wp(
         wp_login, wp_admin, wp_username, wp_password)
 
     _url_admin = '{0}/wp-admin/admin-ajax.php'.format(
-        wp_url)    
+        wp_url)
     """Define all variables"""
     _published_items = []
     """For each novels do to the following"""
-    for _item in items:        
+    for _item in items:
         """Create the post"""
         _post = wordpress.create_post(
             post_type=WEBSITE_POST_TYPE,
@@ -160,7 +187,7 @@ def publish_item_wp(
         if not _post or not _post['valid'] or not 'id' in _post['data']:
             """Add post to novel"""
             continue
-            
+
         """Add payload"""
         _params_item = {
             'idpost': _post['data']['id'],
@@ -205,12 +232,13 @@ def publish_item_wp(
                 'postid': _post['data']['id'],
                 'action': 'doosave_links'
             }
-            _req_mirrors = wordpress.request_to_ajax(_url_admin, _params_item, _session)
-        _item_published={
-            'post_id':_post['data']['id'],
-            'slug':_item['slug'],
-            'title':_item['title'],
-            'mirror':_item['mirrors']
+            _req_mirrors = wordpress.request_to_ajax(
+                _url_admin, _params_item, _session)
+        _item_published = {
+            'post_id': _post['data']['id'],
+            'slug': _item['slug'],
+            'title': _item['title'],
+            'mirror': _item['mirrors']
         }
         _published_items.append(_item_published)
     """Return the posts list"""
@@ -223,35 +251,39 @@ def upload_items(
     wp_login, wp_admin, wp_username, wp_password, wp_url,
     limit_publish,
     page,
+    origin,
 ):
-    _items = get_items_from_website(
+    _items = get_items_from_origin(
         limit=limit,
         page=page,
+        origin=origin,
     )
-    
+
     if _items['valid'] is False:
         return []
 
     _builded_items = build_items_to_upload(
         _items['data']['items'],
         headers,
-        limit_publish
+        limit_publish,
+        origin=origin
     )
 
     if not _builded_items:
         return []
-        
+
     """Publish or update on website"""
     _created_posts = publish_item_wp(
         _builded_items,
         headers=headers,
-        wp_login=wp_login, 
-        wp_admin=wp_admin, 
-        wp_username=wp_username, 
+        wp_login=wp_login,
+        wp_admin=wp_admin,
+        wp_username=wp_username,
         wp_password=wp_password,
         wp_url=wp_url,
     )
     return _created_posts
+
 
 def publish_items(
     limit,
@@ -259,13 +291,15 @@ def publish_items(
     wp_login, wp_admin, wp_username, wp_password, wp_url,
     limit_publish,
     page=1,
-):   
-    _created_posts=upload_items(
+    origin=None
+):
+    _created_posts = upload_items(
         limit,
         headers,
         wp_login, wp_admin, wp_username, wp_password, wp_url,
         limit_publish,
         page=page,
+        origin=origin,
     )
     print("*********len(_items)*********")
     """Check if almost one item was published"""
@@ -288,22 +322,24 @@ def publish_items(
             _session.add(_item)
             _session.flush()
             """Save in database"""
-        else:
-            print("*********_item.value = *********")
-            _item.value = str(int(_item.value)+1)
-        _session.commit()
 
-        _created_posts=upload_items(
+        _created_posts = upload_items(
             limit,
             headers,
             wp_login, wp_admin, wp_username, wp_password, wp_url,
             limit_publish,
             page=_item.value,
+            origin=origin,
         )
 
+        if(len(_created_posts) == 0):
+            print("*********_item.value = *********")
+            _item.value = str(int(_item.value)+1)
+
+        _session.commit()
         _session.close()
 
-    _data_respose={
+    _data_respose = {
         u"items":  _created_posts
     }
     return success_response(

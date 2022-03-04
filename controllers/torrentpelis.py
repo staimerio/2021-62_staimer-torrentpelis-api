@@ -11,6 +11,7 @@ from retic.services.responses import success_response, error_response
 
 WEBSITE_LIMIT_LATEST = app.config.get('WEBSITE_LIMIT_LATEST')
 WEBSITE_PAGES_LATEST = app.config.get('WEBSITE_PAGES_LATEST')
+WEBSITE_ORIGIN = app.config.get('WEBSITE_ORIGIN')
 
 def publish_latest_movies(req: Request, res: Response, next: Next):
     _headers = {}
@@ -60,7 +61,8 @@ def publish_latest_movies(req: Request, res: Response, next: Next):
         wp_password=wp_password, 
         wp_url=wp_url,
         limit_publish=limit_publish,
-        page=req.param('page', WEBSITE_PAGES_LATEST, callback=int)
+        page=req.param('page', WEBSITE_PAGES_LATEST, callback=int),
+        origin=req.param('origin', WEBSITE_ORIGIN)
     )
     """Check if exist an error"""
     if result['valid'] is False:
