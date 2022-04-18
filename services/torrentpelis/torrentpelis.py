@@ -120,6 +120,7 @@ def build_items_to_upload(
     headers,
     limit_publish,
     origin,
+    session, url_admin,
 ):
     """Define all variables"""
     _items = []
@@ -131,6 +132,7 @@ def build_items_to_upload(
         )
         if _oldpost:
             continue
+        
         _publication = get_publication_from_origin(
             _item['url'], _item['id'], origin)
         """Check if it has any problem"""
@@ -144,6 +146,22 @@ def build_items_to_upload(
 
         if not _info:
             continue
+
+        """Add payload"""
+        _params_item = {
+            'tmdbid': _info['imdb_id'],
+            'typept': 'movies',
+            'validate': True,
+            'action': 'dbmovies_genereditor'
+        }
+        _req = wordpress.request_to_ajax(url_admin, _params_item, session)
+        """Get json"""
+        _item_imported = _req.json()
+
+        """If it was published, then add"""
+        if _item_imported['response']:
+            continue
+
         """Set data"""
         _data = {
             **_item,
@@ -160,18 +178,14 @@ def build_items_to_upload(
 
 def publish_item_wp(
     items, headers,
-    wp_login, wp_admin, wp_username, wp_password, wp_url
+    session, url_admin,
 ):
     """Publish all items but it check if the post exists,
     in this case, it will update the post.
 
     :param items: List of novel to will publish
     """
-    _session = wordpress.login(
-        wp_login, wp_admin, wp_username, wp_password)
 
-    _url_admin = '{0}/wp-admin/admin-ajax.php'.format(
-        wp_url)
     """Define all variables"""
     _published_items = []
     """For each novels do to the following"""
@@ -186,6 +200,8 @@ def publish_item_wp(
         """Check if is a valid post"""
         if not _post or not _post['valid'] or not 'id' in _post['data']:
             """Add post to novel"""
+            print(
+                "if not _post or not _post['valid'] or not 'id' in _post['data']")
             continue
 
         """Add payload"""
@@ -195,7 +211,7 @@ def publish_item_wp(
             'typept': 'movies',
             'action': 'dbmovies_genereditor'
         }
-        _req = wordpress.request_to_ajax(_url_admin, _params_item, _session)
+        _req = wordpress.request_to_ajax(url_admin, _params_item, session)
         """Get json"""
         _item_imported = _req.json()
 
@@ -233,7 +249,7 @@ def publish_item_wp(
                 'action': 'doosave_links'
             }
             _req_mirrors = wordpress.request_to_ajax(
-                _url_admin, _params_item, _session)
+                url_admin, _params_item, session)
         _item_published = {
             'post_id': _post['data']['id'],
             'slug': _item['slug'],
@@ -260,27 +276,34 @@ def upload_items(
     )
 
     if _items['valid'] is False:
+        print("if _items['valid'] is False")
         return []
+
+    _session = wordpress.login(
+        wp_login, wp_admin, wp_username, wp_password)
+
+    _url_admin = '{0}/wp-admin/admin-ajax.php'.format(
+        wp_url)
 
     _builded_items = build_items_to_upload(
         _items['data']['items'],
         headers,
         limit_publish,
-        origin=origin
+        origin=origin,
+        session=_session,
+        url_admin=_url_admin,
     )
 
     if not _builded_items:
+        print("if not _builded_items")
         return []
 
     """Publish or update on website"""
     _created_posts = publish_item_wp(
         _builded_items,
         headers=headers,
-        wp_login=wp_login,
-        wp_admin=wp_admin,
-        wp_username=wp_username,
-        wp_password=wp_password,
-        wp_url=wp_url,
+        session=_session,
+        url_admin=_url_admin,
     )
     return _created_posts
 
@@ -301,7 +324,7 @@ def publish_items(
         page=page,
         origin=origin,
     )
-    print("*********len(_items)*********")
+    print("*********len(_created_posts)*********:" + str(len(_created_posts)))
     """Check if almost one item was published"""
     if(len(_created_posts) == 0):
         """Find in database"""
