@@ -163,7 +163,7 @@ def build_items_to_upload(
         _item_imported = _req.json()
 
         """If it was published, then add"""
-        if not _item_imported or ('response' in _item_imported and not _item_imported['response']):
+        if not _item_imported or ('response' in _item_imported and _item_imported['response']):
             continue
 
         """Set data"""
