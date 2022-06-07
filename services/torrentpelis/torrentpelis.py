@@ -42,6 +42,8 @@ def get_items_from_origin(limit, page, origin=None):
             limit=limit,
             page=page,
         )
+        if not _items['valid']:
+            return _items
         return success_response(data={u'items': _items['data']})
     else:
         return get_items_from_website(limit, page, origin)

@@ -149,9 +149,10 @@ def get_data_items_raw(instance, page=0):
     _req = requests.get(_url)
     """Format the response"""
     _soup = BeautifulSoup(_req.content, 'html.parser')
-    if not _soup:
-        return []
     _data_raw = _soup.find(id='archive-content')
+    print(_url)
+    if not _data_raw:
+        return []
     return _data_raw.find_all(class_='movies')
 
 
