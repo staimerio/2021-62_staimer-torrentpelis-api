@@ -8,6 +8,8 @@ import requests
 
 # Time
 from time import sleep
+# Time
+from datetime import datetime
 
 # Services
 from retic.services.responses import success_response, error_response
@@ -316,17 +318,28 @@ def publish_items(
     page=1,
     origin=None
 ):
-    _created_posts = upload_items(
-        limit,
-        headers,
-        wp_login, wp_admin, wp_username, wp_password, wp_url,
-        limit_publish,
-        page=page,
-        origin=origin,
-    )
-    print("*********len(_created_posts)*********:" + str(len(_created_posts)))
+    _items = []
+    """Find in database"""
+    _session = app.apps.get("db_sqlalchemy")()
+    _item = _session.query(Scrapper).\
+        filter(Scrapper.key == wp_url, Scrapper.type == constants.TYPES['movies']).\
+        first()
+
+    _date = datetime.now()
+
+    if not _item or (_item.created_at.year != _date.year or _item.created_at.day != _date.day):
+        print("*********upload_items*********")
+        _items = upload_items(
+            limit,
+            headers,
+            wp_login, wp_admin, wp_username, wp_password, wp_url,
+            limit_publish,
+            page=page,
+            origin=origin,
+        )
+    print("*********len(_items)*********:" + str(len(_items)))
     """Check if almost one item was published"""
-    if(len(_created_posts) == 0):
+    if(len(_items) == 0):
         """Find in database"""
         _session = app.apps.get("db_sqlalchemy")()
         _item = _session.query(Scrapper).\
@@ -344,9 +357,8 @@ def publish_items(
             """Save chapters in database"""
             _session.add(_item)
             _session.flush()
-            """Save in database"""
 
-        _created_posts = upload_items(
+        _items = upload_items(
             limit,
             headers,
             wp_login, wp_admin, wp_username, wp_password, wp_url,
@@ -355,7 +367,7 @@ def publish_items(
             origin=origin,
         )
 
-        if(len(_created_posts) == 0):
+        if(len(_items) == 0):
             print("*********_item.value = *********")
             _item.value = str(int(_item.value)+1)
 
@@ -363,7 +375,7 @@ def publish_items(
         _session.close()
 
     _data_respose = {
-        u"items":  _created_posts
+        u"items":  _items
     }
     return success_response(
         data=_data_respose
