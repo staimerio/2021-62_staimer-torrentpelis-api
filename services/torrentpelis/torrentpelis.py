@@ -132,7 +132,7 @@ def build_items_to_upload(
         )
         if _oldpost:
             continue
-        
+
         _publication = get_publication_from_origin(
             _item['url'], _item['id'], origin)
         """Check if it has any problem"""
@@ -144,7 +144,7 @@ def build_items_to_upload(
             term=_publication['title'],
         )
 
-        if not _info:
+        if not _info or not _info['imdb_id']:
             continue
 
         """Add payload"""
@@ -159,7 +159,7 @@ def build_items_to_upload(
         _item_imported = _req.json()
 
         """If it was published, then add"""
-        if _item_imported['response']:
+        if not _item_imported or ('response' in _item_imported and _item_imported['response']):
             continue
 
         """Set data"""

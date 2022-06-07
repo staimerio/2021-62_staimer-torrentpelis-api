@@ -41,78 +41,83 @@ HEADERS = {
     'upgrade-insecure-requests': '1',
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
 }
-DEFAULT_SIZE_MOVIES_HD= app.config.get("DEFAULT_SIZE_MOVIES_HD")
-DEFAULT_SIZE_MOVIES_4K= app.config.get("DEFAULT_SIZE_MOVIES_4K")
+DEFAULT_SIZE_MOVIES_HD = app.config.get("DEFAULT_SIZE_MOVIES_HD")
+DEFAULT_SIZE_MOVIES_4K = app.config.get("DEFAULT_SIZE_MOVIES_4K")
+
 
 class Torrentpelis(object):
 
     def __init__(self):
         """Set the variables"""
         self.year = app.config.get("TORRENTPELIS_YEAR")
-        self.url_base = app.config.get("TORRENTPELIS_URL_API_BASE")        
+        self.url_base = app.config.get("TORRENTPELIS_URL_API_BASE")
         self.site = app.config.get("TORRENTPELIS_SITE")
         self.host = app.config.get("TORRENTPELIS_HOST")
         self.langname = app.config.get("TORRENTPELIS_LANGNAME")
-    
+
     def get_movie_info(self, id):
-        mirrors=list()        
+        mirrors = list()
         service = "uTorrent"
-        r_download_page = requests.get("{0}?p={1}".format(self.url_base,id))
+        r_download_page = requests.get("{0}?p={1}".format(self.url_base, id))
         _soup = BeautifulSoup(r_download_page.content, 'html.parser')
-        mirrors = self.get_data_video(_soup, service)        
+        mirrors = self.get_data_video(_soup, service)
         """Get info about the item"""
-        _info= self.get_data_post(_soup)
+        _info = self.get_data_post(_soup)
         if not _info:
             """Return error if data is invalid"""
             return error_response(
                 msg="Item not found."
             )
         """Set the data response"""
-        _data_response={
+        _data_response = {
             'mirrors': mirrors,
             **_info
-        }      
+        }
         return success_response(
             data=_data_response
         )
 
     def get_data(self, page, service):
-        _urls=[]
-        _mirrors=[]
+        _urls = []
+        _mirrors = []
 
-        _rows=page.find_all("tr")
+        _rows = page.find_all("tr")
         if(len(_rows) < 2):
             return None
         _rows.pop(0)
-        
+
         for _item in _rows:
             _mirrors.append(self.get_url_torrent(_item, service))
         return _mirrors
 
     def get_data_video(self, _soup, service):
-        _panel_descarga=_soup.find(class_="links_table")
+        _panel_descarga = _soup.find(class_="links_table")
 
         if not _panel_descarga:
             return None
         return self.get_data(_panel_descarga, service)
-    
-    
+
     def get_url_torrent(self, item, service):
-        
-        _url_torrent=item.find("a", href=True)['href']
-        _url_torrent=base64.b64decode(_url_torrent.split('urlb64=')[-1]).decode('utf-8')
-        
-        r_download_page = requests.get(_url_torrent)
-        _soup = BeautifulSoup(r_download_page.content, 'html.parser')
-        _url=_soup.find(id="link", href=True)['href']
 
-        _title=""  
+        _url_torrent = item.find("a", href=True)['href']
+        _url_torrent = base64.b64decode(
+            _url_torrent.split('urlb64=')[-1]).decode('utf-8')
+        r_download_page = None
+        try:
+            r_download_page = requests.get(_url_torrent)
+            _soup = BeautifulSoup(r_download_page.content, 'html.parser')
+            _url = _soup.find(id="link", href=True)['href']
+        except Exception as err:
+            _url = err.args[0].split(
+                "No connection adapters were found for '")[-1].split("'")[0]
 
-        _columns=item.find_all("td")
+        _title = ""
 
-        _quality=_columns[1].text
-        _lang=_columns[2].text
-        _size=_columns[3].text
+        _columns = item.find_all("td")
+
+        _quality = _columns[1].text
+        _lang = _columns[2].text
+        _size = _columns[3].text
         return {
             u'server': service,
             u'url': _url,
@@ -123,27 +128,28 @@ class Torrentpelis(object):
         }
 
     def get_data_post(self, _soup):
-        _single=_soup.find(class_="poster")
-        _img=_single.find('img')['data-src']
-        _title=_soup.find("h1").text
+        _single = _soup.find(class_="poster")
+        _img = _single.find('img')['data-src']
+        _title = _soup.find("h1").text
 
         return {
             'title': _title,
-            'img':_img
+            'img': _img
         }
-    
+
 
 def get_instance():
     """Get an MTLNovel instance from a language"""
     return Torrentpelis()
-    
-def get_data_items_raw(instance, page=0):    
+
+
+def get_data_items_raw(instance, page=0):
     """GET Request to url"""
-    _url="{0}/peliculas/page/{1}".format(instance.url_base, page)
+    _url = "{0}/peliculas/page/{1}".format(instance.url_base, page)
     _req = requests.get(_url)
     """Format the response"""
     _soup = BeautifulSoup(_req.content, 'html.parser')
-    _data_raw=_soup.find(id='archive-content')
+    _data_raw = _soup.find(id='archive-content')
     return _data_raw.find_all(class_='movies')
 
 
@@ -159,11 +165,12 @@ def get_data_item_json(instance, item):
     except Exception as e:
         return None
 
+
 def get_list_json_items(instance, page, limit=100):
     """Declare all variables"""
     _items = list()
     """Get article html from his website"""
-    _items_raw = get_data_items_raw(instance, page) 
+    _items_raw = get_data_items_raw(instance, page)
     for _item_raw in _items_raw:
         _item_data = get_data_item_json(instance, _item_raw)
         """Check if item exists"""
@@ -181,7 +188,8 @@ def get_list_json_items(instance, page, limit=100):
     """Return items"""
     return _items
 
-def get_latest(  limit=10, page=1):
+
+def get_latest(limit=10, page=1):
     """Settings environment"""
     instance = get_instance()
     """Request to hitomi web site for latest novel"""
@@ -199,7 +207,7 @@ def get_latest(  limit=10, page=1):
     )
 
 
-def get_info_post( id):
+def get_info_post(id):
     """Settings environment"""
     instance = get_instance()
     """Request to hitomi web site for latest novel"""
